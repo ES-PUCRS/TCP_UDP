@@ -7,6 +7,7 @@ import java.net.*;// DatagramaSocket,InetAddress,DatagramaPacket
 import java.lang.Thread;
 import java.lang.Runnable;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 
 class TCPClient {
 
@@ -22,26 +23,19 @@ class TCPClient {
    private static DatagramPacket receivePacket;
    private static DatagramPacket sendPacket;
 
-
    private static final int timedOut = timedOutSec * 1000;
    public static void main(String args[]) throws Exception {
+
       // cria o stream do teclado
       BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
 
       File file = new File("ball.txt");
       //Instantiate the input stread
-      InputStream insputStream = new FileInputStream(file);
-      byte[] fileBytes = new byte[(int) file.length()];
+      RandomAccessFile fileReader = new RandomAccessFile(file, "r");
+      byte[] fileBytes = new byte[(int) fileReader.length()];
+      fileReader.readFully(fileBytes);
       
-      int offset = 0, n = 0;
-      //Read the data into bytes array
-      while (offset < fileBytes.length
-         && (n = insputStream.read(fileBytes, offset, fileBytes.length - offset)) >= 0) {
-        offset += n;
-      }
-      insputStream.close();
 
-      
       while(enabled) {
          // Limpando a variável String
          returned = "";
@@ -81,7 +75,7 @@ class TCPClient {
             // Atualizar formato da mensagem recebida
             returned = new String(receivePacket.getData());
             
-            if(returned.contains("200 OK"))
+            if(returned.contains("200"))
                System.out.println("Resposta: 200 OK");
 
          // fecha o cliente
@@ -97,7 +91,7 @@ class TCPClient {
          interrupted = false;
          try {
             clientSocket.receive(receivePacket);
-            interrupted = true;connectionTimeThread.interrupt();
+            interrupted = true;
          } catch (Exception e) {}
       }
    };
