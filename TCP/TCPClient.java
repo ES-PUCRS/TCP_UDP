@@ -25,6 +25,7 @@ class TCPClient {
 
    private static final int timedOut = timedOutSec * 1000;
    public static void main(String args[]) throws Exception {
+      System.out.println("Origin");
 
       // cria o stream do teclado
       BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
@@ -43,6 +44,7 @@ class TCPClient {
          clientSocket = new DatagramSocket(9877);
          // obtem endere?o IP do servidor com o DNS
          InetAddress IPAddress = InetAddress.getByName("localhost");
+         // InetAddress IPAddress = InetAddress.getByName("192.168.0.163");
 
          byte[] sendData = new byte[1024];
          byte[] receiveData = new byte[1024];

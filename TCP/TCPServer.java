@@ -3,6 +3,7 @@
 // Imprime o dado na tela
 
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.net.*;
 import java.io.*;
@@ -10,10 +11,11 @@ import java.io.*;
 class TCPServer {
 
    public static boolean enabled = true;
+   private static final int serverPort = 9876;
 
    public static void main(String args[])  throws Exception
       {
-         System.out.println("Destiny");
+         System.out.println("Server TCP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
             byte[] receiveData = new byte[1024];
 
             // declarando resposta de recebimento
@@ -23,7 +25,7 @@ class TCPServer {
             // declara o socket para responder recebimento
 
             while(enabled) {
-               DatagramSocket serverSocket = new DatagramSocket(9876);
+               DatagramSocket serverSocket = new DatagramSocket(serverPort);
                // cria socket do servidor com a porta 9876
                // limpa o array
                Arrays.fill( receiveData, (byte) 0 );
@@ -32,14 +34,13 @@ class TCPServer {
 
                // recebe o pacote do cliente
                serverSocket.receive(receivePacket);
-
                // pega os dados, o endere?o IP e a porta do cliente
                // para poder mandar a msg de volta
-               String sentence = new String(receivePacket.getData());
+               String sentence = new String(Arrays.copyOf(receivePacket.getData(), receivePacket.getLength()));
                InetAddress IPAddress = receivePacket.getAddress();
                int port = receivePacket.getPort();
 
-               System.out.println("Mensagem recebida "+
+               System.out.println("Mensagem recebida de "+
                                  IPAddress.toString() +":"+ port + " > " + 
                                  sentence);
 
