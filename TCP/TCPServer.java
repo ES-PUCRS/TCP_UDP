@@ -4,7 +4,9 @@
 
 import java.nio.charset.StandardCharsets;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.net.*;
 import java.io.*;
 
@@ -18,14 +20,13 @@ class TCPServer {
          System.out.println("Server TCP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
             byte[] receiveData = new byte[1024];
 
-            // declarando resposta de recebimento
-            byte[] confirmation = new byte[1024];
-            confirmation = "200 OK".getBytes();
+            
 
             // declara o socket para responder recebimento
+            ArrayList <String> list = new ArrayList();
+            DatagramSocket serverSocket = new DatagramSocket(serverPort);
 
             while(enabled) {
-               DatagramSocket serverSocket = new DatagramSocket(serverPort);
                // cria socket do servidor com a porta 9876
                // limpa o array
                Arrays.fill( receiveData, (byte) 0 );
@@ -36,49 +37,40 @@ class TCPServer {
                serverSocket.receive(receivePacket);
                // pega os dados, o endere?o IP e a porta do cliente
                // para poder mandar a msg de volta
-               String sentence = new String(Arrays.copyOf(receivePacket.getData(), receivePacket.getLength()));
-               InetAddress IPAddress = receivePacket.getAddress();
-               int port = receivePacket.getPort();
+               
 
-               System.out.println("Mensagem recebida de "+
-                                 IPAddress.toString() +":"+ port + " > " + 
-                                 sentence);
+               list.add()
 
-               // responde avisando que o pacote foi recebido
-               serverSocket.send(new DatagramPacket(confirmation, confirmation.length, IPAddress, port));
-
-               if(sentence.contains("exit"))
-                  enabled = false;
+               
+               
 
                // fecha o socket
                serverSocket.close();
             }
       }
+
+   public static void recived(DatagramPacket packet) {
+      InetAddress IPAddress = packet.getAddress();
+      int port = packet.getPort();
+      String sentence = new String(Arrays.copyOf(packet.getData(), packet.getLength()));
+      System.out.println("Mensagem recebida de "+
+                                 IPAddress.toString() +":"+ port + " > " + 
+                                 sentence);
+   }
+   public void reply(DatagramPacket packet) throws IOException {
+      InetAddress IPAddress = packet.getAddress();
+      int port = packet.getPort();
+      // declarando resposta de recebimento
+      byte[] confirmation = new byte[1024];
+      
+      DatagramSocket serverSocket = new DatagramSocket(serverPort);
+      // responde avisando que o pacote foi recebido
+      serverSocket.send(new DatagramPacket( (new byte[] {'2','0','0',' ',' ','O','K'}), confirmation.length, IPAddress, port));
+      serverSocket.close();
+   }
+
 }
 
 
 
-   // public static void main(String args[])  throws Exception
-   //    {
-   //       System.out.println("SERVERUP");
-   //       // cria socket do servidor com a porta 9876
-   //       DatagramSocket serverSocket = new DatagramSocket(9876);
-   //          byte[] receiveData = new byte[1024];
-   //          while(enabled)
-   //             {
-   //                Arrays.fill( receiveData, (byte) 0 );
-                  
-   //                // declara o pacote a ser recebido
-
-   //                // recebe o pacote do cliente
-   //                serverSocket.receive(receivePacket);
-                  
-   //                if(sentence.contains("data:"))
-   //                   sentence = sentence.replace("data:","Catch! {");
-
-   //                System.out.println("Mensagem recebida: " + sentence);
-                  
-   //                if(sentence.contains("exit"))
-   //                   enabled = false;
-   //             }
-   //    }
+  
