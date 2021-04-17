@@ -2,30 +2,33 @@
 // L? uma linha do teclado
 // Envia o pacote (linha digitada) ao servidor
 
-import java.io.*; // classes para input e output streams e
-import java.net.*;// DatagramaSocket,InetAddress,DatagramaPacket
-import java.lang.Thread;
-import java.lang.Runnable;
-import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.io.IOException;
+import java.lang.Runnable;
+import java.lang.Thread;
+import java.util.Arrays;
+
+import java.net.*;// DatagramaSocket,InetAddress,DatagramaPacket
+import java.io.*; // classes para input e output streams e
 
 class TCPClient {
-
 
    private static final int timedOutSec = 1;
    private static final int attempts = 4;
 
-   private static boolean enabled = true;
+   private static final int clientPort = 9877;
+
    private static boolean interrupted = true;
+   private static boolean enabled = true;
    private static String returned;
 
-   private static DatagramSocket clientSocket;
    private static DatagramPacket receivePacket;
+   private static DatagramSocket clientSocket;
    private static DatagramPacket sendPacket;
 
    private static final int timedOut = timedOutSec * 1000;
    public static void main(String args[]) throws Exception {
-      System.out.println("Origin");
+      System.out.println("Client TCP rodando em: " + InetAddress.getByName("localhost") + ":" + clientPort);
 
       // cria o stream do teclado
       BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
@@ -41,7 +44,7 @@ class TCPClient {
          // Limpando a variável String
          returned = "";
          // declara socket cliente
-         clientSocket = new DatagramSocket(9877);
+         clientSocket = new DatagramSocket(clientPort);
          // obtem endere?o IP do servidor com o DNS
          InetAddress IPAddress = InetAddress.getByName("localhost");
          // InetAddress IPAddress = InetAddress.getByName("192.168.0.163");
@@ -51,34 +54,33 @@ class TCPClient {
 
          // l? uma linha do teclado
          String sentence = inFromUser.readLine();
-         if(sentence.contains("throw"))
-            sendData = fileBytes;
-         else
-            sendData = sentence.getBytes();
+         if(sentence.contains("throw")) sendData = fileBytes;
+         else sendData = sentence.getBytes();
 
          // cria pacote com o dado, o endere?o do server e porta do servidor
          sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, 9876);
          receivePacket = new DatagramPacket(receiveData, receiveData.length);
 
-         // try {
+         clientSocket.send(sendPacket);
+         if(sentence.contains("exit")){
+            enabled = false;
+            clientSocket.close();
+            break;
+         }
 
-            //envia o pacote
-            clientSocket.send(sendPacket);
-            if(sentence.contains("exit")){
-               enabled = false;
-               clientSocket.close();
-               break;
-            }
-   
-            Thread watchThread = new Thread(watch);
-            watchThread.start();
-            watchThread.join();
+         Thread watchThread = new Thread(watch);
+         watchThread.start();
+         watchThread.join();
 
-            // Atualizar formato da mensagem recebida
-            returned = new String(receivePacket.getData());
-            
-            if(returned.contains("200"))
-               System.out.println("Resposta: 200 OK");
+         // Atualizar formato da mensagem recebida
+         String response = new String(
+            Arrays.copyOf(
+               receivePacket.getData(),
+               receivePacket.getLength()
+            )
+         );
+
+         System.out.println(response);
 
          // fecha o cliente
          clientSocket.close();
@@ -102,13 +104,11 @@ class TCPClient {
       public void run() {
 
          for( int i = 0; i < attempts; i++ ){
-            try{
-               Thread.currentThread().sleep(timedOut);
-            } catch (InterruptedException ex) {}
+            try{ Thread.currentThread().sleep(timedOut); }
+            catch (InterruptedException ex) {}
 
-            if(interrupted){
-               return;
-            } else {            
+            if(interrupted){ return; }
+            else {            
                try { clientSocket.send(sendPacket); } catch (IOException ioe) {}
                System.out.println("> Nao houve resposta. Enviando novo pacote"+returned);
             }
