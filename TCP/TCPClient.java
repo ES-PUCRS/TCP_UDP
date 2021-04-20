@@ -5,6 +5,7 @@
 import java.io.RandomAccessFile;
 import java.io.IOException;
 import java.lang.Runnable;
+import java.util.Random;
 import java.lang.Thread;
 import java.util.Arrays;
 
@@ -16,7 +17,7 @@ class TCPClient {
    private static final int timedOutSec = 1;
    private static final int attempts = 4;
 
-   private static final int clientPort = 9877;
+   private static final int clientPort = (new Random().nextInt(65353-10000) + 10000);  //9877;
 
    private static boolean interrupted = true;
    private static boolean enabled = true;
@@ -54,6 +55,7 @@ class TCPClient {
 
          // l? uma linha do teclado
          String sentence = inFromUser.readLine();
+         // if(sentence.equals("")){ clientSocket.close(); continue; }
          if(sentence.contains("throw")) sendData = fileBytes;
          else sendData = sentence.getBytes();
 

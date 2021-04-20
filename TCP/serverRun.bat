@@ -1,6 +1,6 @@
 @ECHO OFF
-javac *.java -d class
+javac *.java -d _class
 if ["%ERRORLEVEL%"]==["0"] (
-	java -cp class; TCPServer
+	java -cp _class; TCPServer
 )
 rem exit

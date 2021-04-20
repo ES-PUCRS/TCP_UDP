@@ -1,6 +1,6 @@
 @ECHO OFF
-javac *.java -d class
+javac *.java -d _class
 if ["%ERRORLEVEL%"]==["0"] (
-	java -cp class; TCPClient
+	java -cp _class; TCPClient
 )
 exit

@@ -1,8 +1,13 @@
 @ECHO OFF
-javac *.java -d class
+javac *.java -d _class
+SET "invokeParam=%1"
 
 if ["%ERRORLEVEL%"]==["0"] (
-	rem start cmd /k "java -cp class; TCPServer"
-	start cmd /k "java -cp class; TCPServer & EXIT"
-	java -cp class; TCPClient
+	if NOT defined invokeParam (
+		start cmd /k "java -cp _class; TCPServer & EXIT"
+	)
+	if "%invokeParam%" EQU "1" (
+		start cmd /k "java -cp _class; TCPServer"
+	)
+	java -cp _class; TCPClient
 )
