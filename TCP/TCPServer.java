@@ -35,6 +35,8 @@ class Server {
       { port = p; timer = t; }
       
       InetAddress address;
+      int controlPort;
+      int dataPort;
       int port;
 
       int timer;
@@ -50,7 +52,7 @@ class Server {
    private final DatagramSocket socket;
    private static int registerID = 0;
 
-   private HashMap<Integer, HashMap<String, Client>> groups;
+   private Map<Integer, HashMap<String, Client>> groups;
    private Map<String, Client> register;
    private boolean enabled;
 
@@ -83,8 +85,8 @@ class Server {
    *   Possible server calls:
    *    - connect
    *    - disconnect
-   *    - join <<GROUP ID>>
-   *    - left <<GROUP ID>>
+   *    - join -<<GROUP ID>>
+   *    - left -<<GROUP ID>>
    *    - send -<<DESTINY IP:PORT || GROUP ID>> "<<MESSAGE>>"
    *    - broadcast "MESSAGE"
    *    - keepAlive
@@ -106,10 +108,9 @@ class Server {
 
     System.out.println(
        "Mensagem recebida de "+
-       packet.getAddress().toString() +":"+ packet.getPort() +" (" + packet.getLength() + ") > " + 
+       packet.getAddress().toString() +":"+ packet.getPort() +" (" + String.format("%04d",packet.getLength()) + ") > " + 
        sentence
     );
-
 
     switch (requestedMethod(packet)) {
       // Client User
@@ -122,14 +123,15 @@ class Server {
       // Client connection
       case "ack"        : ACK        (packet); break;
       case "keepAlive"  : keepAlive  (packet); break;
-      case "list"       : list       (packet); break;
-      case "listgroups" : listGroups (packet); break;
+      case "register"   : register   (packet); break;
+      case "groups"     : groups     (packet); break;
       case "exit"       : exit       (packet); break;
+      case "help"       : help       (packet); break;
       // Easter eggs
       case"brewcoffee"  : brewCoffee (packet); break;
       case"pudim.com.br": pudim      (packet); break;
       default:
-        reply(packet, "400 Bad Request");
+        reply(packet, "{400: BAD REQUEST}");
     }
   }
 
@@ -170,7 +172,7 @@ class Server {
           0
        )
     );
-    reply(packet, "{201 CREATED} \n[\n\tClientKey: \'"+clientKey+"\'\n]");
+    reply(packet, "{201: CREATED} \n[\n\tClientKey: \'"+clientKey+"\'\n]");
   }
 
    /*  
@@ -178,65 +180,97 @@ class Server {
     */
   public void disconnect (DatagramPacket packet) {
     register.remove(packetKey(packet));
-    reply(packet, "200 OK");
+    reply(packet, "{200: OK}");
   }
 
    
-
+  private Integer packetGroupID(DatagramPacket packet){
+    String dst =
+      packetDestination(packet)
+        .replaceAll("\"","");
+    Integer groupID;
+    try {
+      groupID = new Integer( 
+        Integer.parseInt(dst)
+      );
+    } catch (NumberFormatException e) {
+      throw new NumberFormatException(dst);
+    }
+    return groupID;
+  }
    /*  
     *   Insert a new client on the group list
     */
   public void join    (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
-    // Integer groupID = 0;
-    // HashMap<Integer, Client> group = groups.get(groupID);
+    if(validateUser(packet)) return;
+    Integer groupID;
+    try {
+      groupID = packetGroupID(packet);
+    } catch (NumberFormatException e) {
+      reply(packet, e.getMessage());
+      return;
+    }
 
-    // Client client = new Client(
-    //   packet.getAddress(),
-    //   packet.getPort(),
-    //   0
-    // );
+    HashMap<String, Client> group = (HashMap) groups.get(groupID);
+    String clientKey = packetKey(packet);
+    Client client = register.get(clientKey);
 
+    if(group == null){
+      groups.put(
+        groupID,
+        new HashMap<String, Client>() {{
+          put(clientKey, client);
+        }}
+     );
+    } else {
+      group.put(clientKey, client);
+    }
 
-    // if(group == null){
-    //   groups.put(
-    //     groupID,
-    //     new HashMap<Integer, Client>() {{
-    //       put(2, client);
-    //     }}
-    //  );
-    // } else {
-    //   groups.put(
-    //     groupID,
-    //     group.add(client)
-    //   );
-    // }
-
-    // reply(packet, "200 OK");
+    reply(packet, "{200: OK}");
   }
 
    /*  
     *   Remove the client of the group list
     */
   public void left       (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
-    groups.remove(packet.getAddress());
-    reply(packet, "{200 OK}");
+    if(validateUser(packet)) return;
+    Integer groupID;
+    try {
+      groupID = packetGroupID(packet);
+    } catch (NumberFormatException e) {
+      reply(packet, e.getMessage());
+      return;
+    }
+
+    HashMap<String, Client> group = (HashMap) groups.get(groupID);
+    group.remove(packetKey(packet));
+
+    reply(packet, "{200: OK}");
   }
 
 
 
   public void send       (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
-    String dst = sendDestination(packet);
-    HashMap<String, Client> groupDst = groups.get(dst);  
+    if(validateUser(packet)) return;
+    String dst = packetDestination(packet);
     Client clientDst = register.get(dst);
+    String srcKey = packetKey(packet);
 
-    String message = sendMessage(packet);
+    Integer groupID = 0;
+    try {
+      groupID = packetGroupID(packet);
+    } catch (NumberFormatException e) {}
+    HashMap<String, Client> groupDst = (HashMap) groups.get(groupID);
+    
+    String message = packetMessage(packet);
     if(message.length() > 1024){
-      reply(packet, "{413 PAYLOAD TOO LARGE}");
+      reply(packet, "{413: PAYLOAD TOO LARGE}");
+      return;
+    } else if (message.equals("{400: BAD REQUEST}")){
+      reply(packet, "{400: BAD REQUEST}");
       return;
     }
+
 
     if (clientDst != null) {
       reply(
@@ -248,42 +282,61 @@ class Server {
         message
       );
     } else if (groupDst != null) {
+      if(!groupDst.containsKey(srcKey)){
+        reply(packet, "{401: UNAUTHORIZED}");
+        return;
+      }
       groupDst.forEach( (uri, client) -> {
-          reply(
+        if(!srcKey.equals(uri)) {
+          DatagramPacket target =
             new DatagramPacket(
-              "null".getBytes(), 4
-              ,clientDst.address
-              ,clientDst.port
-            ),
-            message
-          );
+                "null".getBytes(), 4
+               ,client.address
+               ,client.port
+            );
+         reply(target, message);
+        };
       });
     } else {
-      reply(packet,"{404 NOT FOUND}");
+      reply(packet, "{404: NOT FOUND}");
       return;
     }
     
-    reply(packet, "{200 OK}");
+    reply(packet, "{200: OK}");
   }
 
 
   public void broadcast  (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
-    // String message = "" ;
-    // register.forEach((ip, client) -> {
-    //    reply(
-    //       new DatagramPacket(
-    //           null
-    //          ,0
-    //          ,ip
-    //          ,client.port
-    //       ),
-    //       message
-    //    );
-    // });
+    if(validateUser(packet)) return;
+    String message = packetMessage(packet);
+    String clientSrc = packetKey(packet);
+
+    register.forEach((ip, client) -> {
+      if(!clientSrc.equals(ip)) {
+        DatagramPacket target =
+          new DatagramPacket(
+              "null".getBytes(), 4
+             ,client.address
+             ,client.port
+          );
+       reply(target, message);
+      };
+    });
+
+    reply(packet, "{200: OK}");
   }
 
-
+  public void help  (DatagramPacket packet) {
+    reply(packet, 
+        "Server commands:"
+      + "\nconnect"     + "\t\t" + "Connect the client with the server"
+      + "\ndisconnect"  + "\t"   + "Remove the client of the server connections"
+      + "\njoin"        + "\t\t" + "\'join -<<GROUP ID>>\' Will add the client on the group"
+      + "\nleft"        + "\t\t" + "\'left -<<GROUP ID>>\' Will remove the client of group."
+      + "\nsend"        + "\t\t" + "\'send -<<DESTINY IP:PORT||GROUP ID>> \"<<MESSAGE||FILE:File_Name.ext>>\"\' Will send a message or file to the target"
+      + "\nbroadcast"   + "\t"   + "\'broadcast \"<<MESSAGE||FILE:File_Name.ext>>\"\' Will send to every server client the message wroten"
+    );
+  }
 
 
   /* --------------------------------------------- CONTROL METHODS ---------------------------------------------*/
@@ -294,24 +347,24 @@ class Server {
 
 
   public void keepAlive  (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
+    if(validateUser(packet)) return;
   }
 
 
   /*  
   *   List all registered clients on the server
   */
-  public void list       (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
-    reply(packet, "{302 FOUND}\t" + register.toString());
+  public void register  (DatagramPacket packet) {
+    if(validateUser(packet)) return;
+    reply(packet, "{302: FOUND}\n" + register.toString());
   }
 
   /*  
   *   List all registered clients on the server
   */
-  public void listGroups (DatagramPacket packet) {
-    if(validateUser(packet)){ reply(packet, "{401 UNAUTHORIZED}"); return; }
-    reply(packet, "{302 FOUND}\t" + groups.toString());
+  public void groups    (DatagramPacket packet) {
+    if(validateUser(packet)) return;
+    reply(packet, "{302: FOUND}\n" + groups.toString());
   }
 
    /*  
@@ -330,7 +383,7 @@ class Server {
   public void brewCoffee  (DatagramPacket packet) {
     reply(
       packet,
-      "{418 I'm a teapot}     "
+      "{418: I'm a teapot}     "
       +"\n\t The server refuses the attempt to brew coffee with a teapot~~ \n"
       +"\n\t             ;,'  "
       +"\n\t     _o_    ;:;'  "
@@ -391,7 +444,11 @@ class Server {
   }
 
   private boolean validateUser(DatagramPacket packet) {
-    return register.get(packetKey(packet)) == null;
+    if ( register.get(packetKey(packet)) == null ){
+      reply(packet, "{401: UNAUTHORIZED}");
+      return true;
+    }
+    return false;
   }
 
   private String requestedMethod(DatagramPacket packet) {
@@ -400,18 +457,18 @@ class Server {
     = Pattern
         .compile(
            "^("
-          +"connect|disconnect|join|left|send|broadcast|"
-          +"keepAlive|list|listgroups|exit|"
+          +"connect|disconnect|join|left|send|broadcast|help|"
+          +"keepAlive|register|groups|exit|"
           +"brewcoffee|pudim.com.br"
           +")")
         .matcher(sentence.toLowerCase());
         
     if(matcher.find() && matcher.groupCount() == 1)
       return matcher.group(1);
-    return "{405 METHOD NOT ALLOWED}";
+    return "{405: METHOD NOT ALLOWED}";
   }
 
-  private String sendDestination(DatagramPacket packet) {
+  private String packetDestination(DatagramPacket packet) {
     String sentence = new String(packet.getData());
     Matcher matcher
     = Pattern
@@ -433,6 +490,14 @@ class Server {
 
     matcher
     = Pattern
+        .compile("-[0-9]++\\.")
+        .matcher(sentence);
+    if(matcher.find()){
+      return "{400: BAD REQUEST}";
+    }
+
+    matcher
+    = Pattern
         .compile("-[0-9]++")
         .matcher(sentence);
     if(matcher.find()){
@@ -443,20 +508,19 @@ class Server {
                              .length()
                     );
     }
-    return "{400 BAD REQUEST}";
+    return "{400: BAD REQUEST}";
   }
 
-  private String sendMessage(DatagramPacket packet) {
+  private String packetMessage(DatagramPacket packet) {
     String sentence = new String(packet.getData());
     Matcher matcher
     = Pattern
         .compile("(\".*\")")
-        .matcher(sentence.toLowerCase());
+        .matcher(sentence);
 
     if(matcher.find())
       return matcher.group(0);
-    return "{400 BAD REQUEST}";
+    return "{400: BAD REQUEST}";
   }
-
 } 
 
