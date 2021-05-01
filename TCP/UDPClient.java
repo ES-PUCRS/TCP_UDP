@@ -1,8 +1,5 @@
-/*! UNCOMMENT  LINE 134 // keepAliveSync(); 
-   MUDAR LINHA 144!
-!*/
-
 import java.io.RandomAccessFile;
+import java.util.LinkedList;
 import java.io.IOException;
 import java.lang.Runnable;
 import java.util.HashMap;
@@ -12,8 +9,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+// import java.io.IOException;
 import java.net.*;
 import java.io.*;
+
+import libs.FileManager;
+import libs.Decompiler;
+import libs.Protocol;
+import libs.HTTP;
 
 class UDPClient {
    public static void main(String args[]) throws Exception {
@@ -23,7 +26,8 @@ class UDPClient {
 
 class Client {
 
-   private Map<Integer, List<byte[]>> aknowledgment;
+   private Map<Integer, Map<Integer, String>> aknowledgment;
+   private Map<Integer, String> dictionary;
 
    private static int generatePort ()
    { return (new Random().nextInt(65353-10000) + 10000); }
@@ -74,10 +78,12 @@ class Client {
 
       inFromUser = new BufferedReader(new InputStreamReader(System.in));
       receivePacket = new DatagramPacket(new byte[1024], 1024);
-      aknowledgment = new HashMap<Integer, List<byte[]>>();
+      aknowledgment = new HashMap<Integer, Map<Integer, String>>();
+      dictionary = new HashMap<Integer, String>();
       enableKeepAlive = true;
       interrupted = true;
       enabled = true;
+      cache = "";
 
       do {
          controlPort = generatePort();
@@ -108,17 +114,16 @@ class Client {
 
             // Control
             case "connect"           : connect(sentence);  break;
-            case "syn"               :  SYN();  break;
-            case "ack"               :  ACK();  break;
-            case "fin"               :  FIN();  break;
 
-            case "disable keepalive" :  disableKeepAlive();  break;
-            case "enable keepalive"  :  keepAliveSync();     break;
-            case "exit"              :  exit();              break;
+            case "keepalive"         : keepalive();  break;
+            case "disable keepalive" : disableKeepAlive();  break;
+            case "enable keepalive"  : keepAliveSync();     break;
+            case "exit"              : exit();              break;
             default:
                     if(sentence.startsWith("join")) join(sentence);
                else if(sentence.startsWith("left")) left(sentence);
                else if(sentence.contains("file:>")) file(sentence);
+               else if(sentence.length() > 1024)    send(sentence);
                else
                   send(
                      createPacket(
@@ -134,14 +139,98 @@ class Client {
       controlSocket.close();
    }
 
-   private void SYN(){
-      sendControl("SYN");
+   /* Send text asking for sync due to prevent package overflow */
+   private void send (String sentence) {
+      String msg = Decompiler.packetMessage(sentence);
+      int ack_id = Protocol.genAckID(aknowledgment);
+      cache = Decompiler.packetDestination(sentence);
+
+      try {
+         dictionary.put(ack_id, "display");
+         aknowledgment.put(ack_id, FileManager.split(msg.getBytes()));
+      } catch (IOException e) {System.out.println(e);}
+      requestSYN(ack_id);
    }
-   private void ACK(){
-      sendControl("ACK {ACK_ID:-1, DATA_PORT:" + dataPort + "}");
+
+   /* Send file asking sync due to the file size exceed the package size */
+   private void file (String sentence) {
+      String fileName = sentence.replaceAll(".*file:>","");
+      cache = Decompiler.packetDestination(sentence);
+      int ack_id = -1;
+      try {
+         byte[] file = FileManager.read(fileName);
+         ack_id = Protocol.genAckID(aknowledgment);
+         // System.out.println(Arrays.toString(file));
+         dictionary.put(ack_id, fileName);
+         aknowledgment.put(ack_id, FileManager.split(file));
+      } catch (IOException e) {System.out.println(e);}
+      requestSYN(ack_id);
    }
-   private void FIN(){
-      sendControl("ACK {ACK_ID:-1, DATA_PORT:" + dataPort + "}");
+
+   /*
+    *   This method to start a syncronization with the server
+    *   due to send bigger messages
+    */
+   private void requestSYN (int ack_id) {
+      sendControl(
+          "SYN {"
+         +  "ACK_ID:"+ack_id+", "
+         +  "REQ:ALOC, "
+         +  "FILE_NAME:"+dictionary.get(ack_id)
+         +"}"
+      );
+   }
+
+   /*
+    *  This variable is used to store the first send command which
+    *  defines the destination of the message or file. 
+    *
+    *  This file must contain ONLY the destination of the send before
+    *  SYN command. 
+    */
+   String cache;
+
+   /*
+    *   This method is called by the server response
+    *   use to syncronize with the server patterns due to
+    *   send the data or even request ACK to the server.
+    */
+   private void SYN (DatagramPacket packet) {
+      sendControl(Protocol.SYN(packet, aknowledgment, dictionary, cache));
+   }
+
+   private void ACK (DatagramPacket packet){
+      sendControl(Protocol.ACK(packet, aknowledgment, cache));
+   }
+   
+   private void FIN (DatagramPacket packet){
+      Map<String, String> header = Decompiler.packetHeader(packet);
+      String res = Protocol.FIN(packet, aknowledgment, cache);
+      Map<Integer, String> ackBook;
+      
+      try {
+         int ack_id = Integer.parseInt(header.get("ACK_ID"));
+         ackBook = aknowledgment.get(ack_id);
+         if (ackBook != null) {
+            if (ackBook.size() > 0) {
+               sendControl(res); res = "";
+               ackBook = aknowledgment.get(ack_id);
+
+               byte[] file = Decompiler.toArray(Decompiler.merge(ackBook));
+               System.out.println("RECEIVED FILE BYTE SIZE: " + file.length);
+               if (dictionary.get(ack_id).equals("display"))
+                  System.out.println(new String(file, "UTF-8"));
+               else
+                  FileManager.write(("Client_"+dataPort+"-"+dictionary.get(ack_id)), file);
+            }
+            aknowledgment.remove(ack_id);
+            dictionary.remove(ack_id);
+            cache = "";
+         }
+      } catch(Exception e) {e.printStackTrace();}
+
+      if(!res.isEmpty())
+         sendControl(res);
    }
 
    /* 
@@ -179,18 +268,11 @@ class Client {
       sendControl(control);
    }
 
-   private void file (String fileName) {
-      // File file = new File("files/ball.txt");
-      // RandomAccessFile fileReader = new RandomAccessFile(file, "r");
-      // byte[] fileBytes = new byte[(int) fileReader.length()];
-      // fileReader.readFully(fileBytes);
-      // // return fileBytes;
-   }
 
    /* Facilitate the exception handler requested of the socket*/
    private void sendControl (String sentence) {
       try{ controlSocket.send(createPacket(sentence)); }
-      catch( Exception e ) {}
+      catch( Exception e ) {e.printStackTrace();}
    }
 
    /* Cut the unused response size */
@@ -248,6 +330,20 @@ class Client {
       keepAliveThread.start();
    }
 
+   private void keepalive() {
+      System.out.println(enableKeepAlive);
+   }
+
+   private DatagramPacket clonePacket(DatagramPacket packet){
+      return
+         new DatagramPacket (
+            packet.getData(),
+            packet.getLength(),
+            packet.getAddress(),
+            packet.getPort()
+         );
+   }
+
    /* --------------------------------------------- ASYNC METHODS ---------------------------------------------*/
 
    /* This method is used to send a message to the server
@@ -277,14 +373,36 @@ class Client {
          while(enabled) {
             Arrays.fill(data, (byte) 0);
             try {
+               int limitDisplay = 3;
                controlSocket.receive(receiveControl);
-               String res = response(receiveControl);
-               switch (res.toUpperCase()) {
-                  case "{408: REQUEST TIME OUT}" : disableKeepAlive(); break;
-                  default:
-                     System.out.println("Control port> " + res);
+               DatagramPacket packet =
+                  clonePacket(receiveControl);
+               String res = response(packet);
+
+               if (res.equals(HTTP.TIME_OUT.toString())) disableKeepAlive();
+               switch(Decompiler.packetMethod(packet).toUpperCase()){
+                  case "SYN": SYN(packet); break;
+                  case "ACK": ACK(packet); break;
+                  case "FIN": FIN(packet); break;
                }
-            } catch (Exception e) {}
+               int seq = 0;
+               Map<String, String> header = Decompiler.packetHeader(packet);
+
+               try {
+                  if(header.get("ACK") == null)
+                     seq = Integer.parseInt(header.get("SEQ"));
+                  seq = Integer.parseInt(header.get("ACK"));
+               } catch (Exception e) {e.getStackTrace();}
+               String disply = res;
+               if(seq <= limitDisplay) {
+                  if (disply.length() > 60)
+                     disply = disply.substring(0, 52) + "...]}";
+                  if(seq == limitDisplay)
+                     disply = "\t\t\t...";
+                  if(seq <= limitDisplay)
+                  System.out.println("Control port> " + disply);
+               }
+            } catch (Exception e) {e.getStackTrace();}
          }
       }
    };
@@ -345,29 +463,3 @@ class Client {
       }
    };
 }
-
-
-
-
-
-
-   // private Runnable watch = new Runnable() {
-   //   public void run() {
-   //     while(timedOutIn >= 0) {
-   //       timedOutIn--;
-   //       try { thread.sleep(1000); }
-   //       catch ( Exception e ) {}
-   //     }
-   //     System.out.println("Left counter: " + timedOutIn);
-   //     Server
-   //       .getInstance()
-   //       .disconnect(
-   //         new DatagramPacket(
-   //             "null".getBytes(), 4
-   //            ,address
-   //            ,dataPort
-   //         ),
-   //         thread
-   //       );
-   //   }
-   // };
