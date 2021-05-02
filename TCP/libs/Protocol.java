@@ -10,8 +10,9 @@ import java.io.*;
 
 public class Protocol {
 
-  private static int test = 0;
-
+   /*
+    *  This is an assistant method that is used to generate a new ACK ID
+    */
   	public static int genAckID (Map<Integer, Map<Integer, String>> aknowledgment) {
   		int ack_id = 0;
 		do { ack_id = new Random().nextInt() & Integer.MAX_VALUE; }
@@ -19,19 +20,21 @@ public class Protocol {
 		return ack_id;
   	}
 
+   /*
+    *  *
+    */
 	public static String SYN (DatagramPacket packet, Map<Integer, Map<Integer, String>> aknowledgment, Map<Integer, String> dictionary, String cache) {
-	    Map<String, String> header = Decompiler.packetHeader(packet);
-	    int ack_id = -1, ack_id_replace;
-	    String res = "", params = "";
+	   Map<String, String> header = Decompiler.packetHeader(packet);
+	   int ack_id = -1, ack_id_replace;
+	   String res = "", params = "";
 
-	    try{
+	   try{
 			String req = header.get("REQ");
-			switch(req.toUpperCase()){
+			switch (req.toUpperCase()) {
 			case "ALOC" :
 				ack_id_replace 	= Integer.parseInt(header.get("ACK_ID"));
 				ack_id 			= genAckID(aknowledgment);
 				String ack_file = header.get("FILE_NAME");
-				// if(test == 0) { test++; ack_id = -2; }
 				aknowledgment.put(ack_id, new HashMap<Integer, String>());
 				dictionary.put(ack_id, ack_file);
 				params = ", ACK_ID_REPLACE:" + ack_id_replace;
@@ -56,38 +59,37 @@ public class Protocol {
 				packet.setData(("SYN {ACK_ID:"+ack_id+"}").getBytes());
 				return ACK(packet, aknowledgment, cache);
 			}
-	    } catch(Exception e) {
-	    	e.printStackTrace();
-	    	return HTTP.BAD_REQUEST.toString();
-	    }
+	   } catch(Exception e) {
+	   	e.printStackTrace();
+	   	return HTTP.BAD_REQUEST.toString();
+	   }
 
-	    res =  
-  	     "SYN {"
-	    +   "ACK_ID:"         + ack_id  + ", "
-	    +   "REQ:"            + res
-	    +   params
-	    +"}";
-	    return res;
+	   res =  
+  	    "SYN {"
+	   +   "ACK_ID:"         + ack_id  + ", "
+	   +   "REQ:"            + res
+	   +   params
+	   +"}";
+	   return res;
 	}
 	
-
+   /*
+    *  *
+    */
 	public static String ACK (DatagramPacket packet, Map<Integer, Map<Integer, String>> aknowledgment, String cache) {
 		Map<String, String> header = Decompiler.packetHeader(packet);
-	    Map<Integer, String> ackBook;
-	    int ack_id, ack = -1;
+	   Map<Integer, String> ackBook;
+	   int ack_id, ack = -1;
 		String type = "", params = "";
 
 		try {
 			ack_id = Integer.parseInt(header.get("ACK_ID"));
 			ackBook = aknowledgment.get(ack_id);
-			// System.out.println("ACK:: "+header.get("ACK"));
-			// System.out.println("SEQ:: "+header.get("SEQ"));
 			if(header.get("ACK") != null) {
 				ack = Integer.parseInt(header.get("ACK"));
-				if(ackBook.size() >= ack) return FIN(packet, aknowledgment, cache);
+				if(ackBook.size() <= ack) return FIN(packet, aknowledgment, cache);
 
 				params = ", DATA:" + ackBook.get(ack);
-				// ackBook.remove(ack);
 				type = "SEQ";
 			} else {
 				if(header.get("SEQ") != null){
@@ -102,6 +104,11 @@ public class Protocol {
 			return HTTP.BAD_REQUEST.toString();
 		}
 
+		// System.out.println(		"\nACK {"
+		// +   "\n\tACK_ID:" + ack_id + ", \n\t"
+		// +    type+":" + ack+"\n\t"
+		// +	 params
+		// +"\n}");
 		return
 		"ACK {"
 		+   "ACK_ID:" + ack_id + ", "
@@ -110,11 +117,15 @@ public class Protocol {
 		+"}";
 	}
 	
-
+   /*
+    *  This methos is called when the file or the large message has
+    *  been totally sent. So the application is now able to replicate
+    *  or build the source together again.
+    */
 	public static String FIN (DatagramPacket packet, Map<Integer, Map<Integer, String>> aknowledgment, String cache) {
 		Map<String, String> header = Decompiler.packetHeader(packet);
-	    String res = "";
-	    int ack_id;
+	   String res = "";
+	   int ack_id;
 		
 		try {
 			ack_id = Integer.parseInt(header.get("ACK_ID"));

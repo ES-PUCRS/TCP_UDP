@@ -110,7 +110,8 @@ class Client {
          try{ sentence = inFromUser.readLine(); }
          catch(Exception e){}
 
-         switch (sentence.toLowerCase()) {
+         String echo = sentence.toLowerCase();
+         switch (echo) {
 
             // Control
             case "connect"           : connect(sentence);  break;
@@ -120,11 +121,13 @@ class Client {
             case "enable keepalive"  : keepAliveSync();     break;
             case "exit"              : exit();              break;
             default:
-                    if(sentence.startsWith("join")) join(sentence);
-               else if(sentence.startsWith("left")) left(sentence);
-               else if(sentence.contains("file:>")) file(sentence);
-               else if(sentence.length() > 1024)    send(sentence);
-               else
+                    if(echo.startsWith("join"))      join(sentence);
+               else if(echo.startsWith("left"))      left(sentence);
+               else if(echo.contains("file:>"))      file(sentence);
+               else if(echo.length() > 1024) {
+                  if(echo.startsWith("broadcast")) broadcast(sentence);
+                  else send(sentence);
+               } else
                   send(
                      createPacket(
                         sentence.getBytes()
@@ -137,6 +140,27 @@ class Client {
       disableKeepAlive();
       dataSocket.close();
       controlSocket.close();
+   }
+
+
+
+
+
+   /* --------------------------------------------- CONTROL METHODS ---------------------------------------------*/
+   
+   /*
+    *  *
+    */
+   private void broadcast (String sentence) {
+      String msg = Decompiler.packetMessage(sentence);
+      int ack_id = Protocol.genAckID(aknowledgment);
+      cache = "broadcast";
+
+      try {
+         dictionary.put(ack_id, "display");
+         aknowledgment.put(ack_id, FileManager.split(msg.getBytes()));
+      } catch (IOException e) {System.out.println(e);}
+      requestSYN(ack_id);
    }
 
    /* Send text asking for sync due to prevent package overflow */
@@ -156,6 +180,7 @@ class Client {
    private void file (String sentence) {
       String fileName = sentence.replaceAll(".*file:>","");
       cache = Decompiler.packetDestination(sentence);
+      if(cache.equals(HTTP.BAD_REQUEST.toString())) cache = "broadcast";
       int ack_id = -1;
       try {
          byte[] file = FileManager.read(fileName);
@@ -167,6 +192,118 @@ class Client {
       requestSYN(ack_id);
    }
 
+   /* 
+    * Reorganize the request to connect
+    * sending control port and timeout
+    */
+   private void connect (String sentence){
+      sendControl(
+         sentence + " "
+         +"{"
+            +"CONTROL_PORT:"  + controlPort         + ", "
+            +"DATA_PORT:"     + dataPort            + ", "
+            +"TIME_OUT:"      + (keepAliveTime * 2)
+         +"}"
+      );
+      keepAliveSync();
+   }
+
+   private void send (DatagramPacket sendPacket) {
+      try {
+         this.sendPacket = sendPacket;
+         dataSocket.send(sendPacket);
+      } catch (Exception e)
+      { System.out.println(e.getLocalizedMessage()); }
+   }
+
+
+   private void left (String control) {
+      sendControl(control);
+   }
+
+   private void join (String control) {
+      sendControl(control);
+   }
+
+
+   /* Facilitate the exception handler requested of the socket*/
+   private void sendControl (String sentence) {
+      try{ controlSocket.send(createPacket(sentence)); }
+      catch( Exception e ) {e.printStackTrace();}
+   }
+
+   /* Cut the unused response size */
+   private String response (DatagramPacket packet) {
+      return new String(
+            Arrays.copyOf(
+               packet.getData(),
+               packet.getLength()
+         )
+      );
+   }
+
+   /* --------------------------------------------- ASSISTANT METHODS ---------------------------------------------*/
+
+   /* Create a packet to be sent to the server */
+   private DatagramPacket createPacket (String data)
+   { return createPacket( data.getBytes()); }
+   private DatagramPacket createPacket (byte[] data) {
+      return new
+         DatagramPacket(
+            data,
+            data.length,
+            serverAddress,
+            serverPort
+         );
+   }
+
+   /* Clone the packet to be able tochange the state and resend it */
+   private DatagramPacket clonePacket(DatagramPacket packet){
+      return
+         new DatagramPacket (
+            packet.getData(),
+            packet.getLength(),
+            packet.getAddress(),
+            packet.getPort()
+         );
+   }
+
+   /* Close the client and send a request
+    * to disconnect from the server
+    */
+   private void exit() {
+      send(
+         createPacket(
+            "exit".getBytes()
+         )
+      );
+      disableKeepAlive();
+      enabled = false;
+   }
+
+   /* Simply take the keep alive thread off
+    * after the keep alive time is over.
+    */
+   private void disableKeepAlive() {
+      enableKeepAlive = false;
+   }
+
+   /* Start the thread to keep sync alive
+    * with the server.
+    */
+   private void keepAliveSync() {
+      keepAliveThread = new Thread(keepAlive);
+      enableKeepAlive = true;
+      keepAliveThread.start();
+   }
+
+   private void keepalive() {
+      System.out.println(enableKeepAlive);
+   }
+
+
+  /* --------------------------------------------- SYNC METHODS ---------------------------------------------*/
+ 
    /*
     *   This method to start a syncronization with the server
     *   due to send bigger messages
@@ -212,8 +349,8 @@ class Client {
          int ack_id = Integer.parseInt(header.get("ACK_ID"));
          ackBook = aknowledgment.get(ack_id);
          if (ackBook != null) {
-            if (ackBook.size() > 0) {
-               sendControl(res); res = "";
+            if (cache.isEmpty()) {
+               // sendControl(res); res = "";
                ackBook = aknowledgment.get(ack_id);
 
                byte[] file = Decompiler.toArray(Decompiler.merge(ackBook));
@@ -233,118 +370,7 @@ class Client {
          sendControl(res);
    }
 
-   /* 
-    * Reorganize the request to connect
-    * sending control port and timeout
-    */
-   private void connect (String sentence){
-      sendControl(
-         sentence + " "
-         +"{"
-            +"CONTROL_PORT:"  + controlPort         + ", "
-            +"DATA_PORT:"     + dataPort            + ", "
-            +"TIME_OUT:"      + (keepAliveTime * 2)
-         +"}"
-      );
-      keepAliveSync();
-   }
-
-   private void send (DatagramPacket sendPacket) {
-      try {
-         this.sendPacket = sendPacket;
-         dataSocket.send(sendPacket);
-      } catch (Exception e)
-      { System.out.println(e.getLocalizedMessage()); }
-   }
-
-
-   /* --------------------------------------------- CONTROL METHODS ---------------------------------------------*/
-
-   private void left (String control) {
-      sendControl(control);
-   }
-
-   private void join (String control) {
-      sendControl(control);
-   }
-
-
-   /* Facilitate the exception handler requested of the socket*/
-   private void sendControl (String sentence) {
-      try{ controlSocket.send(createPacket(sentence)); }
-      catch( Exception e ) {e.printStackTrace();}
-   }
-
-   /* Cut the unused response size */
-   private String response (DatagramPacket packet) {
-      return new String(
-            Arrays.copyOf(
-               packet.getData(),
-               packet.getLength()
-         )
-      );
-   }
-
-   /* --------------------------------------------- ASSISTANT METHODS ---------------------------------------------*/
-
-   /* Create a packet to be sent to the server */
-   private DatagramPacket createPacket (String data)
-   { return createPacket( data.getBytes()); }
-   private DatagramPacket createPacket (byte[] data) {
-      return new
-         DatagramPacket(
-            data,
-            data.length,
-            serverAddress,
-            serverPort
-         );
-   }
-
-
-   /* Close the client and send a request
-    * to disconnect from the server
-    */
-   private void exit() {
-      send(
-         createPacket(
-            "exit".getBytes()
-         )
-      );
-      disableKeepAlive();
-      enabled = false;
-   }
-
-   /* Simply take the keep alive thread off
-    * after the keep alive time is over.
-    */
-   private void disableKeepAlive() {
-      enableKeepAlive = false;
-   }
-
-   /* Start the thread to keep sync alive
-    * with the server.
-    */
-   private void keepAliveSync() {
-      keepAliveThread = new Thread(keepAlive);
-      enableKeepAlive = true;
-      keepAliveThread.start();
-   }
-
-   private void keepalive() {
-      System.out.println(enableKeepAlive);
-   }
-
-   private DatagramPacket clonePacket(DatagramPacket packet){
-      return
-         new DatagramPacket (
-            packet.getData(),
-            packet.getLength(),
-            packet.getAddress(),
-            packet.getPort()
-         );
-   }
-
-   /* --------------------------------------------- ASYNC METHODS ---------------------------------------------*/
+   /* --------------------------------------------- THREAD METHODS ---------------------------------------------*/
 
    /* This method is used to send a message to the server
     * requesting to keep alive on the server list preventing
