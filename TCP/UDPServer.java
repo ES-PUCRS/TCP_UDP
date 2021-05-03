@@ -22,11 +22,10 @@
    import libs.HTTP;
 
    class UDPServer {
-   public static void main(String args[]) throws Exception {
-    Server.getInstance();
+      public static void main(String args[]) throws Exception {
+         Server.getInstance();
+      }
    }
-   }
-
 
    class Server {
 
@@ -114,6 +113,7 @@
    private Map<Integer, Map<Integer, String>> aknowledgment;
    private Map<String, String> identification;
    private Map<Integer, String> dictionary;
+   private Map<String, Boolean> queueMap;
    private Map<String, Client> register;
    private boolean heartBeat;
    private boolean enabled;
@@ -123,31 +123,32 @@
 
    private static Server instance;
    public static Server getInstance () {
-    try {
-      if(instance == null)
-        instance = new Server();
-    } catch (Exception e) {}
+      try {
+         if(instance == null)
+            instance = new Server();
+      } catch (Exception e) {}
     return instance;
    }
 
    private Server () throws Exception {
-    System.out.println("Server TCP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
-    keyHolder = new HashMap<Integer, List<Integer>>();
-    keyPointer = new HashMap<Integer, Integer>();
+      System.out.println("Server TCP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
+      keyHolder = new HashMap<Integer, List<Integer>>();
+      keyPointer = new HashMap<Integer, Integer>();
 
-    groups = new HashMap<Integer, HashMap<String, Client>>();
-    aknowledgment = new HashMap<Integer, Map<Integer, String>>();
-    identification = new HashMap<String, String>();
-    dictionary = new HashMap<Integer, String>();
-    register = new HashMap<String, Client>();
-    socket = new DatagramSocket(serverPort);
-    heartBeat = false;
-    enabled = true;
-    threeHandShake = false;
-    queue = -1;
-    cache = null;
-    Thread server = new Thread(deploy);
-    server.start();
+      groups = new HashMap<Integer, HashMap<String, Client>>();
+      aknowledgment = new HashMap<Integer, Map<Integer, String>>();
+      identification = new HashMap<String, String>();
+      dictionary = new HashMap<Integer, String>();
+      queueMap = new HashMap<String, Boolean>();
+      register = new HashMap<String, Client>();
+      socket = new DatagramSocket(serverPort);
+      heartBeat = false;
+      enabled = true;
+      threeHandShake = false;
+      queue = -1;
+      cache = null;
+      Thread server = new Thread(deploy);
+      server.start();
    }
 
    private Runnable deploy = new Runnable() {
@@ -245,6 +246,7 @@
          case "showheart"  : heartBeat = true ; break;
          case "hideheart"  : heartBeat = false; break;
          default:
+            System.out.println(Decompiler.packetMethod(packet));
             reply(packet, HTTP.BAD_REQUEST);
       }
    }
@@ -384,6 +386,10 @@
       Client srcClient = getRegister(packet);
       Map<String, Client> targetGroup = null;
       Client targetClient = null;
+      int ack_id = 0;
+
+      try { ack_id = Integer.parseInt(Decompiler.packetHeader(packet).get("ACK_ID")); }
+      catch (Exception e) { }
    
       try { 
          targetClient = getRegister(dst);
@@ -395,20 +401,25 @@
       queue(method, packet, targetClient, targetGroup);
    
       if(targetClient != null){
-        if(!method.equals("send")){
-          if(method.equals("fin")) queue--;
-          requestSYN(targetClient, cache);
-        } else reply(targetClient, message);
+         if(!method.equals("send")){
+            if(method.equals("fin"))
+                  queue--;
+            requestSYN(targetClient, cache);
+         } else reply(targetClient, message);
       } else if (targetGroup != null) {
          if(validateGroup(packet, targetGroup)) return;
-         targetGroup.forEach( (uri, client) -> {
-            if (!srcClient.dataKey.equals(uri)) {
+         for (Map.Entry<String, Client> entry : targetGroup.entrySet()) {
+            if (!srcClient.dataKey.equals(entry.getKey())) {
                if (!method.equals("send")) {
-                  requestSYN(client, cache);
-                  if (method.equals("fin")) queue--;
-               } else { reply(client, message); }
+                  requestSYN(entry.getValue(), cache);
+                  if (method.equals("fin"))
+                     if(!queueMap.containsKey(entry.getKey())) {
+                        queueMap.put(entry.getKey(), true);
+                        queue--;
+                     }
+               } else { reply(entry.getValue(), message); }
             }
-         });
+         }
       } else { reply(packet, HTTP.NOT_FOUND); return; }
       reply(packet, HTTP.OK);
    }
@@ -419,17 +430,25 @@
       String message = Decompiler.packetMessage(packet);
       String method = Decompiler.packetMethod(packet);
       String clientKey = packetKey(packet);
+      int ack_id = 0;
+
+      try { ack_id = Integer.parseInt(Decompiler.packetHeader(packet).get("ACK_ID")); }
+      catch (Exception e) { }
       
       queue(method, packet, null, register);
 
-      register.forEach( (uri, client) -> {
-        if (!clientKey.equals(uri)) {
+      for (Map.Entry<String, Client> entry : register.entrySet()) {
+         if (!clientKey.equals(entry.getKey())) {
             if (!method.equals("broadcast")) {
-               requestSYN(client, cache);
-               if (method.equals("fin")) queue--;
-         } else { reply(client, message); }
-        }
-      });
+               requestSYN(entry.getValue(), cache);
+               if (method.equals("fin"))
+                  if(!queueMap.containsKey(entry.getKey())) {
+                     queueMap.put(entry.getKey(), true);
+                     queue--;
+                  }
+            } else { reply(entry.getValue(), message); }
+         }
+      }
       reply(packet, HTTP.OK);
    }
 
@@ -442,6 +461,8 @@
          + "\nleft"        + "\t\t" + "\'left -<<GROUP ID>>\' Will remove the client of group."
          + "\nsend"        + "\t\t" + "\'send -<<DESTINY IP:PORT||GROUP ID>> \"<<MESSAGE||FILE:>File_Name.ext>>\"\' Will send a message or file to the target"
          + "\nbroadcast"   + "\t"   + "\'broadcast \"<<MESSAGE||FILE:>File_Name.ext>>\"\' Will send to every server client the message wroten"
+         + "\nshowheart"   + "\t"   + "Show all requests to health check"
+         + "\nhideheart"   + "\t"   + "Hide all requests to health check"
       );
    }
 
@@ -544,9 +565,9 @@
             int ack_id, ack_id_replace;
             String res = "";
             ack_id_replace =  Integer.parseInt(header.get("ACK_ID_REPLACE"));
-            ack_id =  Integer.parseInt(header.get("ACK_ID"));
+            ack_id = Integer.parseInt(header.get("ACK_ID"));
 
-            if(aknowledgment.containsKey(ack_id) && ack_id_replace != ack_id){
+            if(aknowledgment.containsKey(ack_id) && ack_id_replace != ack_id) {
                ack_id = ack_id_replace;
                res = "ALOC";
             } else {
@@ -596,17 +617,20 @@
       try {
          int ack_id = Integer.parseInt(header.get("ACK_ID"));
          byte[] dst;
-         try{ dst = ("FIN -"+header.get("DST").replace("^$",":")+" ").getBytes(); }
+         try{ dst = ("FIN -"+header.get("DST").replace("^$",":")+" {ACK_ID:"+ack_id+"} ").getBytes(); }
          catch (Exception e) { dst = new byte[0]; }
          if(aknowledgment.containsKey(ack_id) && (threeHandShake == true || dst.length == 0)) {
             Map<Integer, String> ackBook = aknowledgment.get(ack_id);
             if (ackBook != null && (threeHandShake == true || dst.length == 0)) {
+
                if (queue == 0) {
                   int _ack_id = keyPointer.get(ack_id);
                   List<Integer> keyList = keyHolder.get(_ack_id);
+                     queueMap.remove(_ack_id);
                   for(Integer key : keyList){
                      aknowledgment.remove(key);
                      dictionary.remove(key);
+                     queueMap.remove(key);
                   }
                   cache = null;
                   queue = -1;
