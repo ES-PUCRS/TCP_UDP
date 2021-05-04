@@ -412,11 +412,7 @@
             if (!srcClient.dataKey.equals(entry.getKey())) {
                if (!method.equals("send")) {
                   requestSYN(entry.getValue(), cache);
-                  if (method.equals("fin"))
-                     if(!queueMap.containsKey(entry.getKey())) {
-                        queueMap.put(entry.getKey(), true);
-                        queue--;
-                     }
+                  if (method.equals("fin")) queue--;
                } else { reply(entry.getValue(), message); }
             }
          }

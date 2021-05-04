@@ -2,6 +2,7 @@
 **/.class
 */*.class
 **_class/**
+_class/*
 # Log file
 *.log
 # BlueJ files
