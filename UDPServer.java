@@ -131,7 +131,7 @@
    }
 
    private Server () throws Exception {
-      System.out.println("Server TCP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
+      System.out.println("Server UDP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
       keyHolder = new HashMap<Integer, List<Integer>>();
       keyPointer = new HashMap<Integer, Integer>();
 
