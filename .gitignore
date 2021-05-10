@@ -4,6 +4,7 @@
 **_class/**
 _class/*
 files/received/*
+!files/received/.gitkeep
 # Log file
 *.log
 # BlueJ files
