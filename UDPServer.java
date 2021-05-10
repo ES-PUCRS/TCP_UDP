@@ -1,114 +1,114 @@
-   import java.nio.charset.StandardCharsets;
+import java.nio.charset.StandardCharsets;
 
-   import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayOutputStream;
 
-   import java.util.regex.Matcher;
-   import java.util.regex.Pattern;
-   import java.util.LinkedList;
-   import java.nio.ByteBuffer;
-   import java.util.ArrayList;
-   import java.util.HashMap;
-   import java.lang.Thread;
-   import java.util.Arrays;
-   import java.util.Random;
-   import java.util.List;
-   import java.util.Map;
-   import java.net.*;
-   import java.io.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.LinkedList;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.lang.Thread;
+import java.util.Arrays;
+import java.util.Random;
+import java.util.List;
+import java.util.Map;
+import java.net.*;
+import java.io.*;
 
-   import libs.FileManager;
-   import libs.Decompiler;
-   import libs.Protocol;
-   import libs.HTTP;
+import libs.FileManager;
+import libs.Decompiler;
+import libs.Protocol;
+import libs.HTTP;
 
-   class UDPServer {
-      public static void main(String args[]) throws Exception {
-         Server.getInstance();
-      }
+class UDPServer {
+   public static void main(String args[]) throws Exception {
+      Server.getInstance();
    }
-
-   class Server {
-
+}
+   
+class Server {
+   
    /*
    *   Client class which defines client informations
    *   due to prevent space usage on Map structure
    */
    class Client {
-    Client(InetAddress ad, int dp, int cp, int t)
-    { address=ad; dataPort=dp; controlPort=cp;
-      timeOut=t; timedOutIn=t; 
-      thread = new Thread(watch);
-      thread.start();
-      controlPacket =
-        new DatagramPacket(
-          "null".getBytes(), 4
-         ,ad
-         ,cp
-      );
-      dataPacket =
-        new DatagramPacket(
-          "null".getBytes(), 4
-         ,ad
-         ,dp
-      );
-        controlKey = dataKey = ad.toString().replace("/","") + ":";
-        controlKey += cp;
-        dataKey += dp;
-    }
-
-    DatagramPacket controlPacket;
-    DatagramPacket dataPacket;
-    InetAddress address;
-    int controlPort;
-    int dataPort;
-
-    String controlKey;
-    String dataKey;
-
-    int timedOutIn;
-    int timeOut;
-
-    Thread thread;
-    private Runnable watch = new Runnable() {
-      boolean threadAlive;
-
-      public void run() {
-        threadAlive = true;
-        while(timedOutIn > 0 && threadAlive) {
-          timedOutIn--;
-          // System.out.println(timedOutIn);
-          try { thread.sleep(1000); }
-          catch ( Exception e ) {}
-        }
-        Server
-          .getInstance()
-          .disconnect(
+      Client(InetAddress ad, int dp, int cp, int t) {
+         address=ad; dataPort=dp; controlPort=cp;
+         timeOut=t; timedOutIn=t; 
+         thread = new Thread(watch);
+         thread.start();
+         controlPacket =
             new DatagramPacket(
-                "null".getBytes(), 4
-               ,address
-               ,dataPort
-            ),
-            thread
-          );
+            "null".getBytes(), 4
+            ,ad
+            ,cp
+         );
+         dataPacket =
+           new DatagramPacket(
+             "null".getBytes(), 4
+            ,ad
+            ,dp
+         );
+         controlKey = dataKey = ad.toString().replace("/","") + ":";
+         controlKey += cp;
+         dataKey += dp;
       }
-
-      public void stop(){ threadAlive = false; }
-    };
-
-    @Override
-    public String toString() {
-      return "\n\tAddress: "     + address     +
-             "\n\tData Port:  "  + dataPort    +
-             "\n\tControl Port: "+ controlPort +
-             "\n\tTime out: "    + timeOut     +
-             "\n\tRemaining: "   + timedOutIn  +
-             "\r\n";
-    }
+      
+      DatagramPacket controlPacket;
+      DatagramPacket dataPacket;
+      InetAddress address;
+      int controlPort;
+      int dataPort;
+      
+      String controlKey;
+      String dataKey;
+      
+      int timedOutIn;
+      int timeOut;
+      
+      Thread thread;
+      private Runnable watch = new Runnable() {
+        boolean threadAlive;
+      
+        public void run() {
+          threadAlive = true;
+          while(timedOutIn > 0 && threadAlive) {
+            timedOutIn--;
+            // System.out.println(timedOutIn);
+            try { thread.sleep(1000); }
+            catch ( Exception e ) {}
+          }
+          Server
+            .getInstance()
+            .disconnect(
+              new DatagramPacket(
+                  "null".getBytes(), 4
+                 ,address
+                 ,dataPort
+              ),
+              thread
+            );
+        }
+      
+        public void stop(){ threadAlive = false; }
+      };
+      
+      @Override
+      public String toString() {
+        return "\n\tAddress: "     + address     +
+               "\n\tData Port:  "  + dataPort    +
+               "\n\tControl Port: "+ controlPort +
+               "\n\tTime out: "    + timeOut     +
+               "\n\tRemaining: "   + timedOutIn  +
+               "\r\n";
+      }
    }
-
+   
    private Map<Integer, List<Integer>> keyHolder;
    private Map<Integer, Integer> keyPointer;
-
+   
    private Map<Integer, HashMap<String, Client>> groups;
    private Map<Integer, Map<Integer, String>> aknowledgment;
    private Map<String, String> identification;
@@ -117,10 +117,10 @@
    private Map<String, Client> register;
    private boolean heartBeat;
    private boolean enabled;
-
+   
    private final int serverPort = 9876;
    private final DatagramSocket socket;
-
+   
    private static Server instance;
    public static Server getInstance () {
       try {
@@ -129,12 +129,13 @@
       } catch (Exception e) {}
     return instance;
    }
-
+   
+   /* Constructor initializating variables */
    private Server () throws Exception {
       System.out.println("Server UDP rodando em: " + InetAddress.getByName("localhost") + ":" + serverPort);
       keyHolder = new HashMap<Integer, List<Integer>>();
       keyPointer = new HashMap<Integer, Integer>();
-
+   
       groups = new HashMap<Integer, HashMap<String, Client>>();
       aknowledgment = new HashMap<Integer, Map<Integer, String>>();
       identification = new HashMap<String, String>();
@@ -150,26 +151,29 @@
       Thread server = new Thread(deploy);
       server.start();
    }
-
+   
+   /*  
+    *   Program begin with Thread
+    */
    private Runnable deploy = new Runnable() {
     public void run() {
       byte[] receiveData = new byte[1024];
-
+   
       while(enabled) {
         Arrays.fill( receiveData, (byte) 0 );
         DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
         
-        try{
-          socket.receive(receivePacket);
-          received(receivePacket);
-        } catch (Exception e) {}
+         try{
+            socket.receive(receivePacket);
+            received(receivePacket);
+         } catch (Exception e) {}
       }
       
       socket.close();
     }
    };
-
-
+   
+   
    /*
    *   Order the request to corret method
    *   Needed because Java is ...
@@ -184,6 +188,8 @@
    *    - list
    *    - listgroups
    *    - exit
+   *    - showheart
+   *    - hideheart
    */
    private void received(DatagramPacket packet) throws IOException {
       if(packet.getLength() <= 0) return;
@@ -195,14 +201,14 @@
             seq = Integer.parseInt(header.get("SEQ"));
          seq = Integer.parseInt(header.get("ACK"));   
       } catch (Exception e) {}
-
+   
       String sentence = new String(
          Arrays.copyOf(
             packet.getData(),
             packet.getLength()
          )
       );
-
+   
       String display = "" +
       packet
          .getAddress()
@@ -210,7 +216,7 @@
          + ":" + packet.getPort() +
          " (" + String.format("%04d",packet.getLength()) + ") > " + 
       sentence;
-
+   
       if(sentence.toLowerCase().contains("keepalive") && !heartBeat) {} else {
          if(seq <= limitDisplay) {
             if (sentence.length() > 60)
@@ -220,8 +226,8 @@
             System.out.println(display);
         }
       }
-
-
+   
+   
       switch (Decompiler.packetMethod(packet)) {
          // Client User
          case "connect"    : connect    (packet); break;
@@ -250,13 +256,13 @@
             reply(packet, HTTP.BAD_REQUEST);
       }
    }
-
+   
    /*  
-   *   Generic Method to reply
-   *   Used due to responde the client with the message
-   *   or the requested action status 
-   *   Throws IOException
-   */
+    *   Generic Method to reply
+    *   Used due to responde the client with the message
+    *   or the requested action status 
+    *   Throws IOException
+    */
    private void reply (Client client, HTTP response)                       { reply(client.dataPacket, response.toString()); }
    private void reply (Client client, String response)                     { reply(client.dataPacket, response.toString()); }
    private void reply (Client client, HTTP http, String response)          { reply(client.dataPacket, http.toString() + "\n" + response.toString()); }
@@ -274,8 +280,8 @@
          );
       } catch (IOException ioe) {}
    }
-
-
+   
+   
    /*  
    *   Insert a new client on the server list
    */
@@ -307,8 +313,8 @@
       );
       reply(packet, HTTP.CREATED, "[\n\tClientKey: \'"+clientKey+"\'\n]");
    }
-
-
+   
+   
    /*  
     *   Remove the client of the server list
     */
@@ -326,8 +332,8 @@
       register.remove(packetKey(client));
       reply(packet, HTTP.TIME_OUT);
    }
-
-
+   
+   
    /*  
     *   Insert a new client on the group list
     */
@@ -357,7 +363,7 @@
    
       reply(client, HTTP.OK);
    }
-
+   
    /*  
     *   Remove the client of the group list
     */
@@ -376,8 +382,10 @@
    
       reply(packet, HTTP.OK);
    }
-
-
+   
+   /*  
+    *   Send the message to a single client or to a entire group
+    */
    private void send (DatagramPacket packet) {
       if(validateUser(packet)) return;
       String dst = Decompiler.packetDestination(packet);
@@ -387,7 +395,7 @@
       Map<String, Client> targetGroup = null;
       Client targetClient = null;
       int ack_id = 0;
-
+   
       try { ack_id = Integer.parseInt(Decompiler.packetHeader(packet).get("ACK_ID")); }
       catch (Exception e) { }
    
@@ -398,46 +406,60 @@
             (Decompiler.packetDestinationNumber(packet));
       } catch(Exception e) { }
    
+      // If the method is sync request, this method count how many
+      // clientes will be reach
       queue(method, packet, targetClient, targetGroup);
    
+      // If it will be sent to a single client
       if(targetClient != null){
          if(!method.equals("send")){
-            if(method.equals("fin"))
-                  queue--;
+            if(!queueMap.containsKey(targetClient.controlKey)) {
+               queueMap.put(targetClient.controlKey, true);
+               queue--;
+            }
             requestSYN(targetClient, cache);
          } else reply(targetClient, message);
+   
+      // If it will be sent to a entire group 
       } else if (targetGroup != null) {
+         // Validate that the sender has authorization
          if(validateGroup(packet, targetGroup)) return;
          for (Map.Entry<String, Client> entry : targetGroup.entrySet()) {
             if (!srcClient.dataKey.equals(entry.getKey())) {
                if (!method.equals("send")) {
                   requestSYN(entry.getValue(), cache);
-                  if (method.equals("fin")) queue--;
+                  if(!queueMap.containsKey(entry.getKey())) {
+                     queueMap.put(entry.getKey(), true);
+                     queue--;
+                  }
                } else { reply(entry.getValue(), message); }
             }
          }
       } else { reply(packet, HTTP.NOT_FOUND); return; }
       reply(packet, HTTP.OK);
    }
-
-
+   
+   /*  
+    *   Send for all connected users
+    */
    private void broadcast (DatagramPacket packet) {
       if(validateUser(packet)) return;
       String message = Decompiler.packetMessage(packet);
       String method = Decompiler.packetMethod(packet);
       String clientKey = packetKey(packet);
       int ack_id = 0;
-
+   
       try { ack_id = Integer.parseInt(Decompiler.packetHeader(packet).get("ACK_ID")); }
       catch (Exception e) { }
       
       queue(method, packet, null, register);
-
+   
       for (Map.Entry<String, Client> entry : register.entrySet()) {
          if (!clientKey.equals(entry.getKey())) {
             if (!method.equals("broadcast")) {
                requestSYN(entry.getValue(), cache);
                if (method.equals("fin"))
+                  //Validate if the client has already finished
                   if(!queueMap.containsKey(entry.getKey())) {
                      queueMap.put(entry.getKey(), true);
                      queue--;
@@ -447,7 +469,10 @@
       }
       reply(packet, HTTP.OK);
    }
-
+   
+   /*  
+    *   Send to the client a list with used method
+    */
    public void help (DatagramPacket packet) {
       reply(packet,
            "Server commands:"
@@ -461,41 +486,41 @@
          + "\nhideheart"   + "\t"   + "Hide all requests to health check"
       );
    }
-
+   
    /*  
-   *   Update client health check when called
-   */
+    *   Update client health check when called
+    */
    private void keepAlive (DatagramPacket packet) {
       int clientDataPort = 0;
       try{ clientDataPort = Decompiler.packetDestinationNumber(packet); }
       catch(NumberFormatException nfe) {}
-
+   
       Client client =
         getRegister(packet);
       if (client == null) {
         reply(packet, HTTP.TIME_OUT);
         return;
       }
-
+   
       client.timedOutIn = client.timeOut;
    }
-
+   
    /*  
-   *   List all registered clients on the server
-   */
+    *   List all registered clients on the server
+    */
    private void register (DatagramPacket packet) {
       if(validateUser(packet)) return;
       reply(packet, HTTP.FOUND, register.toString());
    }
-
+   
    /*  
-   *   List all groups on the server
-   */
+    *   List all groups on the server
+    */
    private void groups (DatagramPacket packet) {
       if(validateUser(packet)) return;
       reply(packet, HTTP.FOUND, groups.toString());
    }
-
+   
    /*  
     *   ! DevTool !
     *   Close the server
@@ -505,15 +530,15 @@
       if(register.isEmpty())
          enabled = false;
    }
-
-
+   
+   
    /* --------------------------------------------- SYNC METHODS ---------------------------------------------*/
-
-
+   
+   
    /*
-   *   This method is to start a syncronization with
-   *   the client due to send bigger messages
-   */
+    *   This method is to start a syncronization with
+    *   the client due to send bigger messages
+    */
    private void requestSYN (Client client, int ack_id)         { requestSYN(client.controlPacket, ack_id); }
    private void requestSYN (DatagramPacket packet, int ack_id) {
       reply(
@@ -525,35 +550,35 @@
          +"}"
       );
    }
-
+   
    /*
-   *  This variable is used to store the number of clients which
-   *  will receive the message or file. 
-   *
-   *  This file must contain the number of clients that will be
-   *  reach with SYN command. 
-   */
+    *  This variable is used to store the number of clients which
+    *  will receive the message or file. 
+    *
+    *  This file must contain the number of clients that will be
+    *  reach with SYN command. 
+    */
    Integer queue;
    /*
-   *  The cache will be an memory to carry the ACK_ID to the send
-   *  command, which will alocate the messate properly to the client
-   *  or the desired group to deliver.
-   */
+    *  The cache will be an memory to carry the ACK_ID to the send
+    *  command, which will alocate the messate properly to the client
+    *  or the desired group to deliver.
+    */
    Integer cache;
    /*
-   *  Three hand shake boolean is used to grantee that the server
-   *  will not respond the destiny client with the SYN method twice  
-   */
+    *  Three hand shake boolean is used to grantee that the server
+    *  will not respond the destiny client with the SYN method twice  
+    */
    Boolean threeHandShake;
-
+   
    /*
-   *   This method is called by the server response
-   *   use to syncronize with the server patterns due to
-   *   send the data or even request ACK to the server.
-   */
+    *   This method is called by the server response
+    *   use to syncronize with the server patterns due to
+    *   send the data or even request ACK to the server.
+    */
    private void SYN (DatagramPacket packet) {
       if(validateUserControl(packet)) return;
-
+   
       try {
          String req = Decompiler.packetHeader(packet).get("REQ");
          if(req.equals("REPL")){
@@ -562,7 +587,7 @@
             String res = "";
             ack_id_replace =  Integer.parseInt(header.get("ACK_ID_REPLACE"));
             ack_id = Integer.parseInt(header.get("ACK_ID"));
-
+   
             if(aknowledgment.containsKey(ack_id) && ack_id_replace != ack_id) {
                ack_id = ack_id_replace;
                res = "ALOC";
@@ -570,15 +595,15 @@
                aknowledgment.put(ack_id, aknowledgment.get(ack_id_replace));
                dictionary.put(ack_id, dictionary.get(ack_id_replace));
                keyPointer.put(ack_id, ack_id_replace);
-
+   
                if (keyHolder.containsKey(ack_id_replace))
                  keyHolder.get(ack_id_replace).add(ack_id);
                else
                  keyHolder.put(ack_id_replace, new LinkedList<Integer>(Arrays.asList(ack_id)));
-
+   
                res = "OK";
             }
-
+   
             reply(packet,
              "SYN {"
             +   "ACK_ID:"  + ack_id  + ", "
@@ -588,7 +613,7 @@
             reply(packet, Protocol.SYN(packet, aknowledgment, dictionary, null));
       } catch (Exception e) { e.printStackTrace(); }
    }
-
+   
    /*
    *   ACK is used to aknowledgment of a file bigger than
    *   the connection can handle on a single send connect
@@ -600,7 +625,7 @@
       if(validateUserControl(packet)) return;
       reply(packet, Protocol.ACK(packet, aknowledgment, null));
    }
-
+   
    /*
    *   Is need to communicate that the SYN-ACK is finish
    *   also convert all the data received and prepare to
@@ -618,11 +643,11 @@
          if(aknowledgment.containsKey(ack_id) && (threeHandShake == true || dst.length == 0)) {
             Map<Integer, String> ackBook = aknowledgment.get(ack_id);
             if (ackBook != null && (threeHandShake == true || dst.length == 0)) {
-
+   
                if (queue == 0) {
                   int _ack_id = keyPointer.get(ack_id);
                   List<Integer> keyList = keyHolder.get(_ack_id);
-                     queueMap.remove(_ack_id);
+                     queueMap.clear();
                   for(Integer key : keyList){
                      aknowledgment.remove(key);
                      dictionary.remove(key);
@@ -633,7 +658,7 @@
                   System.out.println("SYN-ACK FINISH");
                } else if(queue < 0) {
                   reply(packet, res); res = null;
-
+   
                   ackBook = aknowledgment.get(ack_id);
                   byte[] file = Decompiler.toArray(Decompiler.merge(ackBook));
                   System.out.println("/SERVER \t\t> RECEIVED FILE BYTE SIZE: " + file.length);
@@ -646,7 +671,7 @@
                     0,
                     file.length + dst.length
                   );
-
+   
                   if(header.get("DST").equals("broadcast"))
                      broadcast(packet);
                   else
@@ -659,11 +684,11 @@
          e.printStackTrace();
          reply(packet, HTTP.BAD_REQUEST);
       }
-
+   
       if(!res.isEmpty())
          reply(packet, res);
    }
-
+   
    /*  
     *   This is used to calculate how many users the SYN
     *   Will be reaching due to be able to clear cache
@@ -680,10 +705,10 @@
             
       }
    }
-
-
+   
+   
    /* --------------------------------------------- EASTER EGG ---------------------------------------------*/
-
+   
    public void brewCoffee  (DatagramPacket packet) {
     reply(
       packet,
@@ -697,7 +722,7 @@
       +"\n\t    `-=-'         "
       );
    }
-
+   
    public void pudim  (DatagramPacket packet) {
       if(validateUser(packet)) return;
       String msg =
@@ -732,7 +757,7 @@
       +"\n=*=========####################################################################"
       +"\n=***=========##################################################################"
       +"\nImagine um pudim aqui##########################################################";
-
+   
       int ack_id = cache = Protocol.genAckID(aknowledgment);
       try {
          dictionary.put(ack_id, "display");
@@ -740,7 +765,7 @@
       } catch (IOException e) { System.out.println(e); }
       queue = 0;
       requestSYN(getRegister(packet), ack_id);
-   }
+}
 
 
 

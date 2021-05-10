@@ -196,8 +196,8 @@ class Client {
 	 * Reorganize the request to connect
 	 * sending control port and timeout
 	 */
-	private void connect (String sentence){
-		sendControl(
+	private void connect (String sentence) {
+		sendControl (
 			sentence + " "
 			+"{"
 				+"CONTROL_PORT:"  + controlPort         + ", "
