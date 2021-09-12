@@ -32,7 +32,7 @@ class UDPClient {
       while(enabled){
          DatagramSocket clientSocket = new DatagramSocket();
          // obtem endere?o IP do servidor com o DNS
-         InetAddress IPAddress = InetAddress.getByName("192.168.0.163");
+         InetAddress IPAddress = InetAddress.getByName("localhost");
 
          byte[] sendData = new byte[1024];
          byte[] receiveData = new byte[1024];
